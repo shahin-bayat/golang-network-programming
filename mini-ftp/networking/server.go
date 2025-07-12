@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -29,7 +29,8 @@ func (s *Server) Run() {
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		log.Fatal("unable to start server:", err)
+		slog.Error("unable to start server", "error", err)
+		os.Exit(1)
 	}
 	defer ln.Close()
 	s.listener = ln
@@ -37,10 +38,10 @@ func (s *Server) Run() {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			log.Print("unable to accept connection", err)
+			slog.Error("unable to accept connection", "error", err)
 			continue
 		}
-		fmt.Printf("connection accepted from %v\n", conn.RemoteAddr())
+		slog.Info("connection accepted", "remote_addr", conn.RemoteAddr())
 		go handleConnection(conn)
 	}
 }
@@ -52,9 +53,9 @@ func handleConnection(c net.Conn) {
 	line, err := reader.ReadString('\n')
 	if err != nil {
 		if errors.Is(err, io.EOF) {
-			log.Printf("client %v closed the connection\n", c.RemoteAddr())
+			slog.Error("client closed the connection", "remote_addr", c.RemoteAddr())
 		} else {
-			log.Printf("read error from %v: %v\n", c.RemoteAddr(), err)
+			slog.Error("error reading from client", "remote_addr", c.RemoteAddr(), "error", err)
 		}
 		return
 	}
@@ -66,14 +67,15 @@ func handleConnection(c net.Conn) {
 	}
 	action := parts[0]
 	filename := parts[1]
-
-	fmt.Printf("received action=%q, filename=%q from %v\n", action, filename, c.RemoteAddr())
+	slog.Info("received command", "action", action, "filename", filename, "remote_addr", c.RemoteAddr())
 
 	switch action {
 	case "put":
 		if err := handlePut(reader, filename); err != nil {
+			slog.Error("error handling put command", "filename", filename, "error", err)
 			c.Write([]byte("ERR " + err.Error() + "\n"))
 		} else {
+			slog.Info("file received", "filename", filename, "remote_addr", c.RemoteAddr())
 			c.Write([]byte("OK\n"))
 		}
 	case "get":
@@ -106,6 +108,7 @@ func handlePut(reader *bufio.Reader, filename string) error {
 
 func handleGet(writer io.Writer, filename string) error {
 	fullpath := filepath.Join("files", filename)
+	fmt.Println("fullpath", fullpath)
 	if _, err := os.Stat(fullpath); err != nil {
 		return fmt.Errorf("failed to locate file %q: %w", fullpath, err)
 	}
