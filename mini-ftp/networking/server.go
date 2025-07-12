@@ -1,15 +1,12 @@
 package networking
 
 import (
-	"bufio"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 type Server struct {
@@ -41,7 +38,7 @@ func (s *Server) Run() {
 			slog.Error("unable to accept connection", "error", err)
 			continue
 		}
-		slog.Info("connection accepted", "remote_addr", conn.RemoteAddr())
+		slog.Info("Connection accepted", "remote_addr", conn.RemoteAddr())
 		go handleConnection(conn)
 	}
 }
@@ -49,37 +46,25 @@ func (s *Server) Run() {
 func handleConnection(c net.Conn) {
 	defer c.Close()
 
-	reader := bufio.NewReader(c)
-	line, err := reader.ReadString('\n')
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			slog.Error("client closed the connection", "remote_addr", c.RemoteAddr())
-		} else {
-			slog.Error("error reading from client", "remote_addr", c.RemoteAddr(), "error", err)
-		}
-		return
+	var msg Message
+	if err := msg.Receive(c); err != nil {
+		slog.Error("error receiving message", "remote_addr", c.RemoteAddr(), "error", err)
 	}
-	cmd := strings.TrimSpace(line)
-	parts := strings.Fields(cmd)
-	if len(parts) != 2 {
-		c.Write([]byte("ERR invalid command\n"))
-		return
-	}
-	action := parts[0]
-	filename := parts[1]
-	slog.Info("received command", "action", action, "filename", filename, "remote_addr", c.RemoteAddr())
+	action := msg.Action
+	filename := msg.Filename
+	fileSize := msg.Size
 
 	switch action {
 	case "put":
-		if err := handlePut(reader, filename); err != nil {
-			slog.Error("error handling put command", "filename", filename, "error", err)
+		if err := handlePut(c, msg); err != nil {
+			slog.Error("error handling put command", "filename", filename, "file size", fileSize, "error", err)
 			c.Write([]byte("ERR " + err.Error() + "\n"))
 		} else {
 			slog.Info("file received", "filename", filename, "remote_addr", c.RemoteAddr())
 			c.Write([]byte("OK\n"))
 		}
 	case "get":
-		if err := handleGet(c, filename); err != nil {
+		if err := handleGet(c, msg); err != nil {
 			c.Write([]byte("ERR " + err.Error() + "\n"))
 		}
 	default:
@@ -87,12 +72,12 @@ func handleConnection(c net.Conn) {
 	}
 }
 
-func handlePut(reader *bufio.Reader, filename string) error {
+func handlePut(reader io.Reader, message Message) error {
 	if err := os.MkdirAll("files", 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	fullpath := filepath.Join("files", filename)
+	fullpath := filepath.Join("files", message.Filename)
 
 	file, err := os.Create(fullpath)
 	if err != nil {
@@ -100,14 +85,14 @@ func handlePut(reader *bufio.Reader, filename string) error {
 	}
 	defer file.Close()
 
-	if _, err := io.Copy(file, reader); err != nil {
+	if _, err := io.CopyN(file, reader, message.Size); err != nil {
 		return fmt.Errorf("failed to write to file %q: %w", fullpath, err)
 	}
 	return nil
 }
 
-func handleGet(writer io.Writer, filename string) error {
-	fullpath := filepath.Join("files", filename)
+func handleGet(writer io.Writer, message Message) error {
+	fullpath := filepath.Join("files", message.Filename)
 	fmt.Println("fullpath", fullpath)
 	if _, err := os.Stat(fullpath); err != nil {
 		return fmt.Errorf("failed to locate file %q: %w", fullpath, err)

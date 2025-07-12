@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/gob"
 	"log/slog"
 	"os"
 	"time"
@@ -11,6 +12,7 @@ import (
 )
 
 func init() {
+	gob.Register(&networking.Message{})
 	opts := &tint.Options{
 		Level:      slog.LevelDebug,
 		TimeFormat: time.Kitchen,

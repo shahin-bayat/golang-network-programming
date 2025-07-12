@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -34,12 +35,18 @@ func (c *Client) Connect() error {
 }
 
 func (c *Client) Send(file *os.File) error {
-	filename := filepath.Base(file.Name())
-	cmd := fmt.Sprintf("%s %s\n", "put", filename)
-	_, err := c.conn.Write([]byte(cmd))
+	fileInfo, err := file.Stat()
 	if err != nil {
-		log.Printf("unable to send command: %s", err)
-		return err
+		slog.Error("unable to get file size", "file", file.Name(), "error", err)
+	}
+	msg := &Message{
+		Action:   "put",
+		Filename: filepath.Base(file.Name()),
+		Size:     fileInfo.Size(),
+	}
+	if err := msg.Send(c.conn); err != nil {
+		slog.Error("unable to send message", "error", err)
+		os.Exit(1)
 	}
 	_, err = io.Copy(c.conn, file)
 	if err != nil {
