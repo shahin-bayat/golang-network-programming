@@ -50,21 +50,17 @@ func handleConnection(c net.Conn) {
 	if err := msg.Receive(c); err != nil {
 		slog.Error("error receiving message", "remote_addr", c.RemoteAddr(), "error", err)
 	}
-	action := msg.Action
-	filename := msg.Filename
-	fileSize := msg.Size
 
-	switch action {
+	switch msg.Action {
 	case "put":
 		if err := handlePut(c, msg); err != nil {
-			slog.Error("error handling put command", "filename", filename, "file size", fileSize, "error", err)
-			c.Write([]byte("ERR " + err.Error() + "\n"))
+			c.Write([]byte("ERR " + err.Error()))
 		} else {
-			slog.Info("file received", "filename", filename, "remote_addr", c.RemoteAddr())
-			c.Write([]byte("OK\n"))
+			c.Write([]byte("OK"))
 		}
 	case "get":
 		if err := handleGet(c, msg); err != nil {
+			slog.Error("failed to send file", "error", err.Error())
 			c.Write([]byte("ERR " + err.Error() + "\n"))
 		}
 	default:
@@ -72,38 +68,56 @@ func handleConnection(c net.Conn) {
 	}
 }
 
-func handlePut(reader io.Reader, message Message) error {
+func handlePut(r io.Reader, message Message) error {
+	// 1. get Message from client
+	// 2. create 'files' directory if not exist
+	// 3. save file to 'files' directory
 	if err := os.MkdirAll("files", 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
+		return fmt.Errorf("failed to create directory: %s", err)
 	}
 
 	fullpath := filepath.Join("files", message.Filename)
 
 	file, err := os.Create(fullpath)
 	if err != nil {
-		return fmt.Errorf("could not create file %q: %w", fullpath, err)
+		return fmt.Errorf("could not create file %s: %s", fullpath, err)
 	}
 	defer file.Close()
 
-	if _, err := io.CopyN(file, reader, message.Size); err != nil {
-		return fmt.Errorf("failed to write to file %q: %w", fullpath, err)
+	if _, err := io.CopyN(file, r, message.Size); err != nil {
+		return fmt.Errorf("failed to write to file %s: %s", fullpath, err)
 	}
 	return nil
 }
 
-func handleGet(writer io.Writer, message Message) error {
+func handleGet(w io.Writer, message Message) error {
+	// 1. get Message from client
+	// 2. check if filename inside Message exist inside 'files' directory
+	// 3. create a Message with file info
+	// 4. send Message to client
+	// 5. send file to client
 	fullpath := filepath.Join("files", message.Filename)
-	fmt.Println("fullpath", fullpath)
-	if _, err := os.Stat(fullpath); err != nil {
-		return fmt.Errorf("failed to locate file %q: %w", fullpath, err)
+
+	fileInfo, err := os.Stat(fullpath)
+	if err != nil {
+		return fmt.Errorf("failed to locate file %s: %s", fullpath, err)
 	}
 	file, err := os.Open(fullpath)
 	if err != nil {
-		return fmt.Errorf("failed to open file %q: %w", fullpath, err)
+		return fmt.Errorf("failed to open file %s: %s", fullpath, err)
 	}
 	defer file.Close()
-	if _, err := io.Copy(writer, file); err != nil {
-		return fmt.Errorf("failed to write from %q: %w", fullpath, err)
+
+	msg := &Message{
+		Action:   "get",
+		Filename: filepath.Base(file.Name()),
+		Size:     fileInfo.Size(),
+	}
+	if err := msg.Send(w); err != nil {
+		return fmt.Errorf("unable to send message: %s", err)
+	}
+	if _, err := io.CopyN(w, file, fileInfo.Size()); err != nil {
+		return fmt.Errorf("failed to write from %s: %s", fullpath, err)
 	}
 	return nil
 }

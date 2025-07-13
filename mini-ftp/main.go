@@ -43,22 +43,23 @@ func main() {
 		slog.Info("Starting client", "mode", mode, "remote host", host, "remote port", port, "file", file, "action", action)
 		client := networking.NewClient(host, port)
 		defer client.Close()
+
 		if err := client.Connect(); err != nil {
 			slog.Error("Error connecting to server", "error", err)
 			os.Exit(1)
 		}
-		f, err := os.Open(file)
-		if err != nil {
-			slog.Error("Error opening file", "file", file, "error", err)
-			os.Exit(1)
-		}
-		if err = client.Send(f); err != nil {
-			slog.Error("Error sending file", "file", file, "error", err)
-			os.Exit(1)
-		}
-		if err = client.Close(); err != nil {
-			slog.Error("Error closing client connection", "error", err)
-			os.Exit(1)
+
+		switch action {
+		case "put":
+			if err = client.Send(file); err != nil {
+				slog.Error("Error sending file", "file", file, "error", err)
+				os.Exit(1)
+			}
+		case "get":
+			if err = client.Receive(file); err != nil {
+				slog.Error("Error receiving file", "file", file, "error", err)
+				os.Exit(1)
+			}
 		}
 		slog.Info("File transfer completed successfully", "file", file, "action", action)
 	}
