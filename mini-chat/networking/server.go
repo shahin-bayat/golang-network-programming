@@ -13,21 +13,26 @@ import (
 )
 
 type Server struct {
-	host     string
-	port     int
-	listener net.Listener
-	rooms    map[string]map[net.Conn]struct{} // map[net.Conn]struct{} is idiomatic way of defining set in go
-	mu       sync.RWMutex
-	handler  ServerHandler
+	host       string
+	port       int
+	welcomeMsg string
+	listener   net.Listener
+	rooms      map[string]map[net.Conn]struct{} // map[net.Conn]struct{} is idiomatic way of defining set in go
+	users      map[net.Conn]string
+	mu         sync.RWMutex
+	handler    ServerHandler
 }
 
 func NewServer(host string, port int) *Server {
 	rooms := make(map[string]map[net.Conn]struct{})
+	users := make(map[net.Conn]string)
 	return &Server{
-		host:    host,
-		port:    port,
-		rooms:   rooms,
-		handler: NewServerHandler(),
+		host:       host,
+		port:       port,
+		welcomeMsg: "Welcome to the minichat application! Version 1.0.0\n",
+		rooms:      rooms,
+		users:      users,
+		handler:    NewServerHandler(),
 	}
 }
 
@@ -66,13 +71,20 @@ func (s *Server) handleConnection(c net.Conn) {
 		s.disconnect(c)
 	}()
 
-	r := bufio.NewReader(c)
-	_, err := c.Write([]byte("Welcome to minichat application\n"))
-	if err != nil {
-		slog.Error("failed to send welcome message", "error", err)
-		return // when retuns, connection will be closed to this client because of defer on top of this function
+	var h Handshake
+	if err := h.Deserialize(c); err != nil {
+		fmt.Fprintf(c, "ERR: %s\n", err)
+		slog.Error("handshake failed", "error", err, "remote", c.RemoteAddr())
+		return // drop this client
 	}
 
+	if err := s.handshake(c, &h); err != nil {
+		fmt.Fprintf(c, "ERR: %s\n", err)
+		slog.Error("handshake error", "error", err, "remote", c.RemoteAddr())
+		return // drop this client
+	}
+
+	r := bufio.NewReader(c)
 	for {
 		line, err := r.ReadString('\n')
 		if err != nil {
@@ -101,6 +113,28 @@ func (s *Server) handleConnection(c net.Conn) {
 			fmt.Fprintf(c, "OK JOIN %s\n", cmd.Room)
 		case "MSG":
 			s.broadcast(cmd.Room, c.RemoteAddr(), cmd.Text)
+		case "LEAVE":
+			fmt.Fprintf(c, "OK LEAVE %s\n", cmd.Room)
+			s.disconnect(c)
+		case "QUIT":
+			fmt.Fprintln(c, "Goodbye!")
+			return // close the connection
+		case "LIST":
+			s.mu.RLock()
+			var rooms []string
+			for room := range s.rooms {
+				rooms = append(rooms, room)
+			}
+			s.mu.RUnlock()
+			if len(rooms) == 0 {
+				fmt.Fprintln(c, "No rooms available")
+			} else {
+				fmt.Fprintf(c, "Available rooms: %s\n", strings.Join(rooms, ", "))
+			}
+		default:
+			fmt.Fprintf(c, "ERR: unsupported command %s\n", cmd.Verb)
+			slog.Warn("unsupported command", "command", cmd.Verb, "from", c.RemoteAddr())
+			continue // continue to read next command
 		}
 	}
 }
@@ -123,7 +157,11 @@ func (s *Server) broadcast(room string, from net.Addr, text string) {
 		slog.Warn("broadcast to non-existing room", "room", room)
 		return // no one in this room, nothing to broadcast
 	}
-
+	user, ok := s.users[from]
+	if !ok {
+		slog.Warn("broadcast from unknown user", "from", from)
+		return // unknown user, nothing to broadcast
+	}
 	for peer := range peers {
 		fmt.Fprintf(peer, "[%s] %s:%s\n", room, from, text)
 	}
@@ -148,4 +186,25 @@ func (s *Server) disconnect(c net.Conn) {
 	for _, room := range leftRooms {
 		s.broadcast(room, c.RemoteAddr(), "has left the room")
 	}
+}
+
+func (s *Server) handshake(c net.Conn, h *Handshake) error {
+	s.mu.RLock()
+	for _, user := range s.users {
+		if user == h.User {
+			s.mu.RUnlock()
+			return fmt.Errorf("user %s is already connected", h.User)
+		}
+	}
+	s.mu.RUnlock()
+
+	_, err := c.Write([]byte(s.welcomeMsg))
+	if err != nil {
+		return fmt.Errorf("failed to send welcome message: %w", err)
+	}
+	s.mu.Lock()
+	s.users[c] = h.User
+	s.mu.Unlock()
+	fmt.Fprintf(c, "OK USER %s\n", h.User)
+	return nil
 }

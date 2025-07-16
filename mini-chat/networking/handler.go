@@ -24,9 +24,6 @@ func NewServerHandler() ServerHandler {
 
 func (h *serverHandler) Parse(line string) (*Command, error) {
 	parts := strings.SplitN(line, " ", 3)
-	if len(parts) < 2 {
-		return nil, fmt.Errorf("invalid command: %q", line)
-	}
 
 	verb := strings.ToUpper(parts[0])
 	switch verb {
@@ -45,7 +42,22 @@ func (h *serverHandler) Parse(line string) (*Command, error) {
 		}
 		room := strings.TrimSpace(strings.ToLower(parts[1]))
 		return &Command{Verb: verb, Room: room, Text: parts[2]}, nil
-
+	case "QUIT":
+		if len(parts) != 1 {
+			return nil, fmt.Errorf("QUIT does not require any arguments")
+		}
+		return &Command{Verb: verb}, nil
+	case "LEAVE":
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("LEAVE requires exactly one argument: room name")
+		}
+		room := strings.TrimSpace(strings.ToLower(parts[1]))
+		return &Command{Verb: verb, Room: room}, nil
+	case "LIST":
+		if len(parts) != 1 {
+			return nil, fmt.Errorf("LIST does not require any arguments")
+		}
+		return &Command{Verb: verb}, nil
 	default:
 		return nil, fmt.Errorf("unsupported command: %s", verb)
 	}

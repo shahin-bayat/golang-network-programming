@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/shahin-bayat/mini-chat/internal/config"
+	"github.com/shahin-bayat/mini-chat/networking"
 	"github.com/spf13/cobra"
 )
 
@@ -18,12 +19,11 @@ var clientCmd = &cobra.Command{
 		}
 		fmt.Printf("Connecting to %s:%d as %s\n",
 			clientCfg.Host, clientCfg.Port, clientCfg.User)
-		// client := networking.NewClient(clientCfg.Host, clientCfg.Port)
-		// if err := client.Connect(); err != nil {
-		// 	return err
-		// }
-		// defer client.Close()
-		// TODO: hand off to TUI or REPL
+		client := networking.NewClient(clientCfg.Host, clientCfg.Port, clientCfg.User)
+
+		if err := client.Connect(); err != nil {
+			return err
+		}
 		return nil
 	},
 }
