@@ -112,7 +112,7 @@ func (s *Server) handleConnection(c net.Conn) {
 			s.joinRoom(cmd.Room, c)
 			fmt.Fprintf(c, "OK JOIN %s\n", cmd.Room)
 		case "MSG":
-			s.broadcast(cmd.Room, c.RemoteAddr(), cmd.Text)
+			s.broadcast(cmd.Room, c, cmd.Text)
 		case "LEAVE":
 			fmt.Fprintf(c, "OK LEAVE %s\n", cmd.Room)
 			s.disconnect(c)
@@ -146,10 +146,10 @@ func (s *Server) joinRoom(room string, c net.Conn) {
 	}
 	s.rooms[room][c] = struct{}{}
 	s.mu.Unlock()
-	s.broadcast(room, c.RemoteAddr(), "has joined the room")
+	s.broadcast(room, c, "has joined the room")
 }
 
-func (s *Server) broadcast(room string, from net.Addr, text string) {
+func (s *Server) broadcast(room string, from net.Conn, text string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	peers, ok := s.rooms[room]
@@ -157,13 +157,9 @@ func (s *Server) broadcast(room string, from net.Addr, text string) {
 		slog.Warn("broadcast to non-existing room", "room", room)
 		return // no one in this room, nothing to broadcast
 	}
-	user, ok := s.users[from]
-	if !ok {
-		slog.Warn("broadcast from unknown user", "from", from)
-		return // unknown user, nothing to broadcast
-	}
+	user := s.users[from]
 	for peer := range peers {
-		fmt.Fprintf(peer, "[%s] %s:%s\n", room, from, text)
+		fmt.Fprintf(peer, "[%s] %s:%s\n", room, user, text)
 	}
 }
 
@@ -181,10 +177,11 @@ func (s *Server) disconnect(c net.Conn) {
 			delete(s.rooms, room) // remove empty rooms
 		}
 	}
+	delete(s.users, c)
 	s.mu.Unlock()
 
 	for _, room := range leftRooms {
-		s.broadcast(room, c.RemoteAddr(), "has left the room")
+		s.broadcast(room, c, "has left the room")
 	}
 }
 
