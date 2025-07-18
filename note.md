@@ -1,44 +1,57 @@
-# HTTP Request Format: A Quick Reference
+### Project 6: TCP Reverse-Proxy / Load Balancer
 
-This note explains the structure of HTTP requests.
+**Concept: What is a Reverse Proxy?**
 
-## The HTTP/1.x Request-Line
+A reverse proxy is a server that sits in front of one or more "backend" servers, forwarding client requests to them. To the outside world, it looks like a single server.
 
-For any request using HTTP/1.0 or HTTP/1.1, the communication **must** start with a specific line of text called the **Request-Line**. This line always follows the format:
+*   **Analogy: A Receptionist**
+    Imagine a large office building with hundreds of employees. You don't know each person's direct phone number. Instead, you call the main reception desk. The receptionist (the reverse proxy) takes your message and forwards it to the correct employee (the backend server). You, the caller (the client), only ever interact with the receptionist.
 
-`METHOD /path HTTP/version`
+**Diagram:**
 
-**Example:** `GET /index.html HTTP/1.1`
+```
+                 +------------------+
+                 |                  |
+    +--------+   |   Reverse Proxy  |   +----------------+
+    | Client |----->| (e.g., :8080)  |-->| Backend Server 1 |
+    +--------+   |                  |   +----------------+
+                 |                  |
+                 |                  |   +----------------+
+                 |                  |-->| Backend Server 2 |
+                 +------------------+   +----------------+
+```
 
-This format is strictly defined by the HTTP specification and contains three distinct parts separated by single spaces:
+**Key Functions:**
+*   **Load Balancing:** Distribute incoming traffic among several backend servers.
+*   **Security:** Hide the identity and characteristics of backend servers.
+*   **SSL Termination:** Handle incoming HTTPS connections, decrypting them and passing unencrypted requests to the backends.
+*   **Caching:** Store copies of responses to speed up future requests.
 
-1.  **Method:** A verb that tells the server *what action to perform*.
-    *   `GET`: Retrieve a resource. (This is what you handle).
-    *   `POST`: Submit data to be processed (e.g., a web form).
-    *   `PUT`: Replace a resource.
-    *   `DELETE`: Remove a resource.
-    *   `HEAD`: Same as `GET`, but only asks for the headers, not the response body.
-    *   Others include `OPTIONS`, `PATCH`, `CONNECT`.
+---
 
-2.  **Path (Request Target):** This tells the server *which resource* the action applies to. It's the part of the URL that comes after the domain (e.g., `/about-us.html` or `/search?q=networking`).
+**Concept: Load Balancing**
 
-3.  **Protocol Version:** This tells the server which version of the HTTP rules the client (browser) is following (e.g., `HTTP/1.1`). This is essential for ensuring compatibility.
+Load balancing is the process of efficiently distributing network traffic across multiple servers. The goal is to prevent any single server from becoming a bottleneck and to ensure high availability and reliability.
 
-## The Shift to HTTP/2 and HTTP/3
+#### Common Load Balancing Algorithms
 
-The text-based `Request-Line` format is specific to **HTTP/1.x**. Modern web communication has evolved.
+1.  **Round-Robin**
+    *   **How it works:** Requests are distributed to servers in a rotating sequence. The first request goes to Server 1, the second to Server 2, and so on. When the end of the list is reached, it starts over from the beginning.
+    *   **Analogy: A Fair Restaurant Host:** A host seats arriving guests at each table one by one. Once every table has a group, the next group goes to the first table again. It's simple and ensures every server gets an equal number of connections over time.
 
-*   **HTTP/2 and HTTP/3 are binary protocols.**
-*   They do not send human-readable text. Instead, they use a system of binary "frames" to communicate the same information (method, path, headers, etc.).
-*   This binary format is much more efficient, faster, and less error-prone to parse.
+2.  **Least Connections**
+    *   **How it works:** The next incoming request is sent to the server that currently has the fewest active connections.
+    *   **Analogy: A Smart Supermarket Cashier:** You look for the shortest checkout line. This algorithm sends new customers (requests) to the least busy cashier (server), which is often more efficient than just rotating.
 
-### Why Does a Simple Text-Based Server Still Work?
+---
 
-Your server works because of **protocol negotiation**.
+**Concept: Thread Safety & Mutexes**
 
-1.  A modern browser first tries to connect using HTTP/2 or HTTP/3.
-2.  The server (yours) doesn't understand this new protocol.
-3.  The browser then automatically **falls back to the universally supported HTTP/1.1**.
-4.  Your server receives a classic, text-based HTTP/1.1 request that your code can parse.
+When a server handles multiple connections at once (concurrently), different parts of the code can run at the same time in separate **goroutines**.
 
-Building a server that parses the text-based format is a fundamental exercise in network programming that teaches you the core concepts of the web's most important protocol.
+If multiple goroutines try to read and write a shared piece of data—like the counter for our round-robin algorithm—they can interfere with each other, leading to a **race condition**.
+
+*   **Analogy: The Key to a Shared Resource Room**
+    Imagine a small supply room that only one person can enter at a time. To control access, there's a single key. To enter, you must take the key. If another person arrives, they have to wait until you come out and return the key.
+
+A **Mutex** (Mutual Exclusion) is that key. Before a goroutine can access a shared variable, it must "lock" the mutex. When it's done, it "unlocks" it, allowing other goroutines to take their turn. This prevents race conditions and ensures data integrity.
