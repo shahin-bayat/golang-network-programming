@@ -10,14 +10,16 @@ import (
 )
 
 type Server struct {
-	host string
-	port int
+	host    string
+	port    int
+	records map[string][4]byte
 }
 
-func NewServer(host string, port int) *Server {
+func NewServer(host string, port int, records map[string][4]byte) *Server {
 	return &Server{
-		host: host,
-		port: port,
+		host:    host,
+		port:    port,
+		records: records,
 	}
 }
 
@@ -66,24 +68,25 @@ func (s *Server) read(c *net.UDPConn) {
 		}
 		slog.Info("Parsed question", "name", question.Name, "type", question.Type)
 
-		targetDomain, err := dnsmessage.NewName("test.local.com.")
-		if err != nil {
-			slog.Error("failed to create target dns name", "error", err)
+		if question.Type != dnsmessage.TypeA {
+			slog.Info("dns record not supported", "type", question.Type)
 		}
-		hardcodedIP := [4]byte{192, 168, 1, 1}
 
-		if question.Type == dnsmessage.TypeA && question.Name.String() == targetDomain.String() {
-			slog.Info("matched query for test.local. A record. Building response...")
-			response, err := s.buildResponse(header.ID, question, hardcodedIP)
-			if err != nil {
-				slog.Error("failed to build DNS response", "error", err)
-			}
-			_, err = c.WriteToUDP(response, remoteAddr)
-			if err != nil {
-				slog.Error("failed to send DNS response", "error", err)
-			}
-		} else {
-			slog.Info("query does not match test.local. A record, ignoring.", "name", question.Name, "type", question.Type, "target domain", targetDomain)
+		ip, ok := s.records[question.Name.String()]
+		if !ok {
+			slog.Info("record not found", "domain", question.Name)
+			continue
+		}
+
+		response, err := s.buildResponse(header.ID, question, ip)
+		if err != nil {
+			slog.Error("failed to build DNS response", "error", err)
+			break
+		}
+		_, err = c.WriteToUDP(response, remoteAddr)
+		if err != nil {
+			slog.Error("failed to send DNS response", "error", err)
+			break
 		}
 	}
 }
@@ -137,6 +140,10 @@ func (s *Server) buildResponse(queryID uint16, question *dnsmessage.Question, ip
 }
 
 func main() {
-	server := NewServer("", 53)
+	records := map[string][4]byte{
+		"example.com.": {192, 0, 2, 1},
+		"another.net.": {10, 0, 0, 5},
+	}
+	server := NewServer("", 53, records)
 	server.Run()
 }
