@@ -55,68 +55,85 @@ func (s *Server) read(c *net.UDPConn) {
 		slog.Info("Received packet", "from", remoteAddr.String())
 
 		query := buf[:n]
-		s.parseQuery(query, remoteAddr)
+		question, header, err := s.parseQuery(query)
+		if err != nil {
+			slog.Error("failed to parse DNS query", "error", err)
+			continue
+		}
+		if question == nil {
+			slog.Info("no question found in the DNS query, skipping")
+			continue
+		}
+		slog.Info("Parsed question", "name", question.Name, "type", question.Type)
+
+		targetDomain, err := dnsmessage.NewName("test.local.com.")
+		if err != nil {
+			slog.Error("failed to create target dns name", "error", err)
+		}
+		hardcodedIP := [4]byte{192, 168, 1, 1}
+
+		if question.Type == dnsmessage.TypeA && question.Name.String() == targetDomain.String() {
+			slog.Info("matched query for test.local. A record. Building response...")
+			response, err := s.buildResponse(header.ID, question, hardcodedIP)
+			if err != nil {
+				slog.Error("failed to build DNS response", "error", err)
+			}
+			_, err = c.WriteToUDP(response, remoteAddr)
+			if err != nil {
+				slog.Error("failed to send DNS response", "error", err)
+			}
+		} else {
+			slog.Info("query does not match test.local. A record, ignoring.", "name", question.Name, "type", question.Type, "target domain", targetDomain)
+		}
 	}
 }
 
-func (s *Server) parseQuery(query []byte, remoteAddr *net.UDPAddr) {
+func (s *Server) parseQuery(query []byte) (*dnsmessage.Question, *dnsmessage.Header, error) {
 	var p dnsmessage.Parser
-	h, err := p.Start(query)
+	header, err := p.Start(query)
 	if err != nil {
-		slog.Error("error read dns message", "error", err)
-		return
+		return nil, nil, fmt.Errorf("failed to start DNS parser: %w", err)
 	}
-	// for {
+	// for { // if you want to get all questions
 	question, err := p.Question()
 	if err != nil {
-
 		if err != dnsmessage.ErrSectionDone {
-			slog.Error("failed to get dns question", "error", err)
-			break
+			return nil, nil, fmt.Errorf("failed to get DNS question: %w", err)
 		}
-		return
+		slog.Info("no more questions in the DNS message")
+		return nil, nil, nil
 	}
-	slog.Info("question:", "type", question.Type, "name", question.Name)
-
-	targetDomain, err := dnsmessage.NewName("test.local.com.")
-	if err != nil {
-		slog.Error("failed to create target dns name", "error", err)
-	}
-	hardcodedIP := [4]byte{192, 168, 1, 1}
-
-	if question.Type == dnsmessage.TypeA && question.Name.String() == targetDomain.String() {
-		slog.Info("matched query for test.local. A record. Building response...")
-		_, err = s.buildResponse(h.ID, question, hardcodedIP)
-		if err != nil {
-			slog.Error("failed to build DNS response", "error", err)
-		}
-		// TODO: send response to client
-	} else {
-		slog.Info("query does not match test.local. A record, ignoring.", "name", question.Name, "type", question.Type, "target domain", targetDomain)
-	}
-	// }
+	return &question, &header, nil
 }
 
-func (s *Server) buildResponse(queryID uint16, question dnsmessage.Question, ip [4]byte) ([]byte, error) {
-	header := dnsmessage.Header{
-		ID:       queryID,
-		Response: true,
-		OpCode:   dnsmessage.OpCode(0),
-		RCode:    dnsmessage.RCodeSuccess,
+func (s *Server) buildResponse(queryID uint16, question *dnsmessage.Question, ip [4]byte) ([]byte, error) {
+	msg := dnsmessage.Message{
+		Header: dnsmessage.Header{
+			ID:       queryID,
+			Response: true,
+			OpCode:   dnsmessage.OpCode(0),
+			RCode:    dnsmessage.RCodeSuccess,
+		},
+		Questions: []dnsmessage.Question{*question},
+		Answers: []dnsmessage.Resource{
+			{
+				Header: dnsmessage.ResourceHeader{
+					Name:  question.Name,
+					Type:  dnsmessage.TypeA,
+					Class: dnsmessage.ClassINET,
+				},
+				Body: &dnsmessage.AResource{A: ip},
+			},
+		},
 	}
 
-	resourceHeader := dnsmessage.ResourceHeader{
-		Name:  question.Name,
-		Type:  question.Type,
-		Class: question.Class,
+	// Pack the message into a byte slice
+	packed, err := msg.Pack()
+	if err != nil {
+		return nil, fmt.Errorf("failed to pack DNS message: %w", err)
 	}
-
-	res := make([]byte, 1024)
-
-	b := dnsmessage.NewBuilder(res, header)
-	b.EnableCompression()
-	b.AResource(resourceHeader, dnsmessage.AResource{A: ip})
-	return b.Finish()
+	slog.Info("Built DNS response", "queryID", queryID, "questionName", question.Name, "ip", ip)
+	return packed, nil
 }
 
 func main() {
