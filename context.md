@@ -28,10 +28,10 @@ This section covers the foundational concepts and common protocols.
   - [x] **Step 2: Basic UDP Listener:** Write the code to listen for incoming UDP packets on port 53.
   - [x] **Step 3: Parsing DNS Queries:** Use the `golang.org/x/net/dns/dnsmessage` library to parse the incoming byte buffer into a DNS message.
   - [x] **Step 4: Crafting a Response:** Create a DNS response message with a hardcoded IP address for a specific domain query (e.g., `test.local.`).
-  - [ ] **Step 5: Sending the Response:** Marshal the response message back into bytes and send it back to the client's address.
-  - [ ] **Step 6: (Optional) Dynamic Responses:** Create a map to store domain-to-IP mappings and respond dynamically based on the query.
+  - [x] **Step 5: Sending the Response:** Marshal the response message back into bytes and send it back to the client's address.
+  - [x] **Step 6: (Optional) Dynamic Responses:** Create a map to store domain-to-IP mappings and respond dynamically based on the query.
   - [ ] **Step 7: (Future) Iterative Resolution:**
-    - [ ] **Step 7.1: Root Hints:** Load a pre-defined list of root DNS server IP addresses.
+    - [x] **Step 7.1: Root Hints:** Load a pre-defined list of root DNS server IP addresses.
     - [ ] **Step 7.2: Iterative Query Function:** Implement a function to perform iterative queries, following referrals from root to TLD to authoritative servers.
     - [ ] **Step 7.3: Caching:** Implement an in-memory cache for resolved DNS records to improve performance.
     - [ ] **Step 7.4: Handling Other Record Types:** Extend parsing and response building to support AAAA, MX, NS, CNAME, etc.
@@ -61,6 +61,7 @@ The following instructions are saved in the assistant's memory to guide its beha
 - **Guide, don't just do:** Define a strategy for each project in this context file. Ask the user to implement each step themselves. Review their code, and coach them to fix or improve it.
 - **Provide code on request:** Only provide complete, working code snippets when the user explicitly asks for them after getting stuck.
 - **Maintain the roadmap:** Keep the learning roadmap in this file updated to reflect the user's progress.
+- **Focus on Architecture & Design Patterns:** For all future projects, prioritize good architectural design, maintainability, and scalability. Actively seek opportunities to apply suitable design patterns (e.g., Dependency Injection, Strategy, Builder) where they enhance code quality and understanding.
 
 ### Commit Guidelines
 

@@ -1,17 +1,24 @@
 package main
 
 import (
-	"simple-dns/records"
-	"simple-dns/server"
+	"fmt"
+	"log/slog"
+	"os"
+	"simple-dns/resolver"
+
+	"golang.org/x/net/dns/dnsmessage"
 )
 
 func main() {
-	recordStore := records.InMemoryRecordStore{
-		Records: map[string][4]byte{
-			"example.com.": {192, 0, 2, 1},
-			"another.net.": {10, 0, 0, 5},
-		},
+	dnsNama, _ := dnsmessage.NewName("shahinbayat.ir.")
+	answers, err := resolver.Resolve(dnsNama, dnsmessage.TypeA)
+	if err != nil {
+		slog.Error("IP not found", "error", err)
+		os.Exit(1)
 	}
-	server := server.NewServer("", 53, &recordStore)
-	server.Run()
+	for _, a := range answers {
+		fmt.Println("found IP:", a.Body)
+	}
+	// server := server.NewServer("", 530, &recordStore)
+	// server.Run()
 }
