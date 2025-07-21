@@ -2,7 +2,11 @@ package resolver
 
 import (
 	"fmt"
+	"math"
+	"math/rand"
 	"net"
+	"simple-dns/cache"
+	"time"
 
 	"golang.org/x/net/dns/dnsmessage"
 )
@@ -15,14 +19,36 @@ var RootServers = []string{
 	"192.203.230.10:53", // E.ROOT-SERVERS.NET
 }
 
-func Resolve(name dnsmessage.Name, qType dnsmessage.Type) ([]dnsmessage.Resource, error) {
+type Resolver struct {
+	cache *cache.DNSCache
+}
+
+func NewResolver() *Resolver {
+	return &Resolver{
+		cache: cache.New(),
+	}
+}
+
+func (r *Resolver) Resolve(name dnsmessage.Name, qType dnsmessage.Type) ([]dnsmessage.Resource, error) {
+	// Check cache first
+	cacheKey := cache.CacheKey{Name: name, Type: qType}
+	if entry, found := r.cache.Get(cacheKey); found {
+		fmt.Printf("Cache hit for %s %s\n", name.String(), qType)
+		return entry.Resources, nil
+	}
+
+	// If not found in cache, resolve the name using the root servers
 	addr, err := net.ResolveUDPAddr("udp", RootServers[0])
 	if err != nil {
 		return nil, err
 	}
+
+	fmt.Printf("querying root server %s for %s\n", addr.String(), name.String())
+
 	var response dnsmessage.Message
 
 	// Iterate up to 10 times to follow referrals
+MainLoop:
 	for i := 0; i < 10; i++ {
 		conn, err := net.DialUDP("udp", nil, addr)
 		if err != nil {
@@ -32,7 +58,7 @@ func Resolve(name dnsmessage.Name, qType dnsmessage.Type) ([]dnsmessage.Resource
 
 		msg := dnsmessage.Message{
 			Header: dnsmessage.Header{
-				ID:               1, // This should be random
+				ID:               uint16(rand.Intn(65535)),
 				RecursionDesired: false,
 			},
 			Questions: []dnsmessage.Question{
@@ -62,9 +88,19 @@ func Resolve(name dnsmessage.Name, qType dnsmessage.Type) ([]dnsmessage.Resource
 			return nil, err
 		}
 
-		// If we have answers, we're done
 		if len(response.Answers) > 0 {
-			return response.Answers, nil
+			minTTL := minTTL(response.Answers)
+			cacheEntry := cache.CacheEntry{Resources: response.Answers, ExpiresAt: minTTL}
+			if cname, ok := response.Answers[0].Body.(*dnsmessage.CNAMEResource); ok {
+				fmt.Printf("following CNAME from %s to %s\n", name.String(), cname.CNAME.String())
+				r.cache.Set(cacheKey, cacheEntry)
+				name = cname.CNAME
+				continue MainLoop
+			} else {
+				finalCacheKey := cache.CacheKey{Name: name, Type: qType}
+				r.cache.Set(finalCacheKey, cacheEntry)
+				return response.Answers, nil
+			}
 		}
 
 		// If there are no authorities, we can't go any further
@@ -103,7 +139,7 @@ func Resolve(name dnsmessage.Name, qType dnsmessage.Type) ([]dnsmessage.Resource
 				break Authorities
 			} else {
 				// If there's no glue record, we have to resolve the nameserver's IP ourselves
-				recursiveResult, err := Resolve(ns.NS, dnsmessage.TypeA)
+				recursiveResult, err := r.Resolve(ns.NS, dnsmessage.TypeA)
 				if err != nil {
 					continue Authorities // Try the next authority if this one fails
 				}
@@ -125,7 +161,19 @@ func Resolve(name dnsmessage.Name, qType dnsmessage.Type) ([]dnsmessage.Resource
 		if !foundNextAddr {
 			return nil, fmt.Errorf("could not find next address to query for %s", name)
 		}
+
+		fmt.Printf("redirected to query %s for %s\n", addr.String(), name.String())
 	}
 
 	return nil, fmt.Errorf("resolver timeout: exceeded 10 iterations for %s", name)
+}
+
+func minTTL(answers []dnsmessage.Resource) time.Time {
+	minTTL := uint32(math.MaxUint32)
+	for _, answer := range answers {
+		if answer.Header.TTL < minTTL {
+			minTTL = answer.Header.TTL
+		}
+	}
+	return time.Now().Add(time.Second * time.Duration(minTTL))
 }

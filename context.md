@@ -32,9 +32,10 @@ This section covers the foundational concepts and common protocols.
   - [x] **Step 6: (Optional) Dynamic Responses:** Create a map to store domain-to-IP mappings and respond dynamically based on the query.
   - [ ] **Step 7: (Future) Iterative Resolution:**
     - [x] **Step 7.1: Root Hints:** Load a pre-defined list of root DNS server IP addresses.
-    - [ ] **Step 7.2: Iterative Query Function:** Implement a function to perform iterative queries, following referrals from root to TLD to authoritative servers.
-    - [ ] **Step 7.3: Caching:** Implement an in-memory cache for resolved DNS records to improve performance.
+    - [x] **Step 7.2: Iterative Query Function:** Implement a function to perform iterative queries, following referrals from root to TLD to authoritative servers.
+    - [x] **Step 7.3: Caching:** Implement an in-memory cache for resolved DNS records to improve performance.
     - [ ] **Step 7.4: Handling Other Record Types:** Extend parsing and response building to support AAAA, MX, NS, CNAME, etc.
+    - [ ] **Step 7.5: Integrate Resolver with Server:** Modify the UDP server handler to use the iterative resolver for any queries not found in its local records.
 - [ ] 8. **Port-Forwarding Tunnel (like `ssh -L`):** Forward a local port through a TCP connection to a remote host/port.
 - [ ] 9. **Simple TLS Terminating Proxy:** Accept TLS-encrypted TCP, decrypt it, and proxy the clear-text to a backend.
 - [ ] 10. **Custom RPC Framework:** Design a remote procedure call framework using `gob` or Protocol Buffers.
