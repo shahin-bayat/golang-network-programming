@@ -4,23 +4,24 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"simple-dns/records"
+	"simple-dns/resolver"
 	"time"
 
 	"golang.org/x/net/dns/dnsmessage"
 )
 
 type Server struct {
-	host        string
-	port        int
-	recordStore records.RecordStore
+	host     string
+	port     int
+	resolver *resolver.Resolver
 }
 
-func NewServer(host string, port int, recordStore records.RecordStore) *Server {
+func NewServer(host string, port int) *Server {
+	resolver := resolver.NewResolver()
 	return &Server{
-		host:        host,
-		port:        port,
-		recordStore: recordStore,
+		host:     host,
+		port:     port,
+		resolver: resolver,
 	}
 }
 
@@ -42,7 +43,7 @@ func (s *Server) Run() {
 }
 
 func (s *Server) read(c *net.UDPConn) {
-	buf := make([]byte, 1024)
+	buf := make([]byte, 512)
 	for {
 		n, remoteAddr, err := c.ReadFromUDP(buf)
 		if err != nil {
@@ -55,10 +56,8 @@ func (s *Server) read(c *net.UDPConn) {
 			break
 		}
 
-		slog.Info("Received packet", "from", remoteAddr.String())
-
 		query := buf[:n]
-		question, header, err := s.parseQuery(query) // Call parseQuery method
+		question, header, err := s.parseQuery(query)
 		if err != nil {
 			slog.Error("failed to parse DNS query", "error", err)
 			continue
@@ -67,33 +66,44 @@ func (s *Server) read(c *net.UDPConn) {
 			slog.Info("no question found in the DNS query, skipping")
 			continue
 		}
-		slog.Info("Parsed question", "name", question.Name, "type", question.Type)
 
 		if question.Type != dnsmessage.TypeA {
-			slog.Info("dns record not supported", "type", question.Type)
-			// In a real server, you might send a NOTIMP (Not Implemented) response
-			continue
-		}
+			errResponse, err := s.buildErrorResponse(header, question, dnsmessage.RCodeNotImplemented)
+			if err != nil {
+				slog.Error("failed to build DNS response", "error", err)
+				continue
+			}
+			_, err = c.WriteToUDP(errResponse, remoteAddr)
+			if err != nil {
+				slog.Error("failed to send DNS response", "error", err)
+				continue
+			}
+		} else {
+			answers, err := s.resolver.Resolve(question.Name, question.Type)
+			if err != nil {
+				errResponse, err := s.buildErrorResponse(header, question, dnsmessage.RCodeNameError)
+				if err != nil {
+					slog.Error("failed to build DNS response", "error", err)
+					continue
+				}
+				_, err = c.WriteToUDP(errResponse, remoteAddr)
+				if err != nil {
+					slog.Error("failed to send DNS response", "error", err)
+					continue
+				}
+				continue
+			}
 
-		// Look up the IP in the recordStore
-		ip, err := s.recordStore.Get(question.Name.String())
-		if err != nil {
-			slog.Info("record not found", "domain", question.Name)
-			// In a real server, you might send an NXDOMAIN (Non-Existent Domain) response
-			continue
-		}
-
-		response, err := s.buildResponse(header.ID, question, ip) // Call buildResponse method
-		if err != nil {
-			slog.Error("failed to build DNS response", "error", err)
-			// Consider if you want to break or continue here
-			continue
-		}
-		_, err = c.WriteToUDP(response, remoteAddr)
-		if err != nil {
-			slog.Error("failed to send DNS response", "error", err)
-			// Consider if you want to break or continue here
-			continue
+			response, err := s.buildResponse(header, question, answers)
+			if err != nil {
+				slog.Error("failed to build DNS response", "error", err)
+				continue
+			}
+			_, err = c.WriteToUDP(response, remoteAddr)
+			if err != nil {
+				slog.Error("failed to send DNS response", "error", err)
+				continue
+			}
 		}
 	}
 }

@@ -1,34 +1,16 @@
 package main
 
-import (
-	"fmt"
-	"log/slog"
-	"os"
-	"simple-dns/resolver"
-
-	"golang.org/x/net/dns/dnsmessage"
-)
+import "simple-dns/server"
 
 func main() {
-	dnsNama, _ := dnsmessage.NewName("www.yahoo.com.")
-
-	r := resolver.NewResolver()
-	answers, err := r.Resolve(dnsNama, dnsmessage.TypeA)
-	if err != nil {
-		slog.Error("IP not found", "error", err)
-		os.Exit(1)
-	}
-	for _, a := range answers {
-		fmt.Println("found IP:", a.Body)
-	}
-	answers, err = r.Resolve(dnsNama, dnsmessage.TypeA)
-	if err != nil {
-		slog.Error("IP not found", "error", err)
-		os.Exit(1)
-	}
-	for _, a := range answers {
-		fmt.Println("found IP:", a.Body)
-	}
-	// server := server.NewServer("", 530, &recordStore)
-	// server.Run()
+	// answers, err := r.Resolve(dnsNama, dnsmessage.TypeA)
+	// if err != nil {
+	// 	slog.Error("IP not found", "error", err)
+	// 	os.Exit(1)
+	// }
+	// for _, a := range answers {
+	// 	fmt.Println("found IP:", a.Body)
+	// }
+	server := server.NewServer("", 530)
+	server.Run()
 }

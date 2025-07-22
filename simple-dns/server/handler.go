@@ -2,7 +2,6 @@ package server
 
 import (
 	"fmt"
-	"log/slog"
 
 	"golang.org/x/net/dns/dnsmessage"
 )
@@ -13,44 +12,49 @@ func (s *Server) parseQuery(query []byte) (*dnsmessage.Question, *dnsmessage.Hea
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to start DNS parser: %w", err)
 	}
-	// for { // if you want to get all questions
 	question, err := p.Question()
 	if err != nil {
 		if err != dnsmessage.ErrSectionDone {
 			return nil, nil, fmt.Errorf("failed to get DNS question: %w", err)
 		}
-		slog.Info("no more questions in the DNS message")
 		return nil, nil, nil
 	}
 	return &question, &header, nil
 }
 
-func (s *Server) buildResponse(queryID uint16, question *dnsmessage.Question, ip [4]byte) ([]byte, error) {
+func (s *Server) buildResponse(header *dnsmessage.Header, question *dnsmessage.Question, answers []dnsmessage.Resource) ([]byte, error) {
 	msg := dnsmessage.Message{
 		Header: dnsmessage.Header{
-			ID:       queryID,
+			ID:       header.ID,
 			Response: true,
-			OpCode:   dnsmessage.OpCode(0),
+			OpCode:   header.OpCode,
 			RCode:    dnsmessage.RCodeSuccess,
 		},
 		Questions: []dnsmessage.Question{*question},
-		Answers: []dnsmessage.Resource{
-			{
-				Header: dnsmessage.ResourceHeader{
-					Name:  question.Name,
-					Type:  dnsmessage.TypeA,
-					Class: dnsmessage.ClassINET,
-				},
-				Body: &dnsmessage.AResource{A: ip},
-			},
-		},
+		Answers:   answers,
 	}
 
-	// Pack the message into a byte slice
 	packed, err := msg.Pack()
 	if err != nil {
 		return nil, fmt.Errorf("failed to pack DNS message: %w", err)
 	}
-	slog.Info("Built DNS response", "queryID", queryID, "questionName", question.Name, "ip", ip)
+	return packed, nil
+}
+
+func (s *Server) buildErrorResponse(header *dnsmessage.Header, question *dnsmessage.Question, rcode dnsmessage.RCode) ([]byte, error) {
+	msg := dnsmessage.Message{
+		Header: dnsmessage.Header{
+			ID:       header.ID,
+			Response: true,
+			OpCode:   header.OpCode,
+			RCode:    rcode,
+		},
+		Questions: []dnsmessage.Question{*question},
+	}
+
+	packed, err := msg.Pack()
+	if err != nil {
+		return nil, fmt.Errorf("failed to pack DNS message: %w", err)
+	}
 	return packed, nil
 }
