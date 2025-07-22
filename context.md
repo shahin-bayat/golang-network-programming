@@ -23,21 +23,31 @@ This section covers the foundational concepts and common protocols.
   - [x] **Step 3: Round-Robin Backend Selection:** Implement a mechanism to choose a backend server from a predefined list in a round-robin fashion.
   - [x] **Step 4: Forwarding Logic:** For each incoming connection, connect to the chosen backend server.
   - [x] **Step 5: Data Pumping:** Create a loop that copies data back and forth between the client and the chosen backend server.
-- [ ] 7. **Simple DNS Server (UDP):** Respond to basic A-record queries using the UDP protocol.
+- [x] 7. **Simple DNS Server (UDP):** Respond to basic A-record queries using the UDP protocol.
   - [x] **Step 1: Project Setup:** Create a new directory (`simple-dns`) and initialize a Go module.
   - [x] **Step 2: Basic UDP Listener:** Write the code to listen for incoming UDP packets on port 53.
   - [x] **Step 3: Parsing DNS Queries:** Use the `golang.org/x/net/dns/dnsmessage` library to parse the incoming byte buffer into a DNS message.
   - [x] **Step 4: Crafting a Response:** Create a DNS response message with a hardcoded IP address for a specific domain query (e.g., `test.local.`).
   - [x] **Step 5: Sending the Response:** Marshal the response message back into bytes and send it back to the client's address.
   - [x] **Step 6: (Optional) Dynamic Responses:** Create a map to store domain-to-IP mappings and respond dynamically based on the query.
-  - [ ] **Step 7: (Future) Iterative Resolution:**
+  - [x] **Step 7: (Future) Iterative Resolution:**
     - [x] **Step 7.1: Root Hints:** Load a pre-defined list of root DNS server IP addresses.
     - [x] **Step 7.2: Iterative Query Function:** Implement a function to perform iterative queries, following referrals from root to TLD to authoritative servers.
     - [x] **Step 7.3: Caching:** Implement an in-memory cache for resolved DNS records to improve performance.
-    - [ ] **Step 7.4: Handling Other Record Types:** Extend parsing and response building to support AAAA, MX, NS, CNAME, etc.
-    - [ ] **Step 7.5: Integrate Resolver with Server:** Modify the UDP server handler to use the iterative resolver for any queries not found in its local records.
-- [ ] 8. **Port-Forwarding Tunnel (like `ssh -L`):** Forward a local port through a TCP connection to a remote host/port.
+    - [x] **Step 7.4: Handling Other Record Types:** Extend parsing and response building to support AAAA, MX, NS, CNAME, etc.
+    - [x] **Step 7.5: Integrate Resolver with Server:** Modify the UDP server handler to use the iterative resolver for any queries not found in its local records.
+- [x] 8. **Port-Forwarding Tunnel (like `ssh -L`):** Forward a local port through a TCP connection to a remote host/port.
+  - [x] **Step 8.1: Project Setup:** Create a new directory (`port-forwarder`) and initialize a Go module.
+  - [x] **Step 8.2: Parse Command-Line Arguments:** Write code to accept the local and remote addresses from the command line.
+  - [x] **Step 8.3: Implement TCP Listener:** Write the code to listen for incoming TCP connections on the specified local address.
+  - [x] **Step 8.4: Implement Forwarding Logic:** For each incoming connection, connect to the specified remote address.
+  - [x] **Step 8.5: Data Pumping:** Create two goroutines to copy data back and forth between the local and remote connections using `io.Copy`.
 - [ ] 9. **Simple TLS Terminating Proxy:** Accept TLS-encrypted TCP, decrypt it, and proxy the clear-text to a backend.
+  - [ ] **Step 9.1: Project Setup:** Create a new directory (`tls-proxy`) and initialize a Go module.
+  - [ ] **Step 9.2: Generate Self-Signed Certificate:** Create a private key and a self-signed certificate for the server.
+  - [ ] **Step 9.3: Implement TLS Listener:** Write the code to listen for incoming TLS connections using `tls.Listen`.
+  - [ ] **Step 9.4: Implement Forwarding Logic:** For each incoming connection, open a plain TCP connection to a backend service.
+  - [ ] **Step 9.5: Data Pumping:** Use `io.Copy` to move the decrypted data between the client and the backend.
 - [ ] 10. **Custom RPC Framework:** Design a remote procedure call framework using `gob` or Protocol Buffers.
 - [ ] **(Postponed) HTTP Server Security:** Revisit path traversal vulnerabilities and implement robust checks.
 
